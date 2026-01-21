@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://virtuosokgh.github.io/sinsido/sitemap.xml
