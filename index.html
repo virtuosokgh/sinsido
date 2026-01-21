@@ -50,22 +50,28 @@
         
         <main>
             <div class="weather-card">
-                <div class="location">
-                    <h2 id="location">신시도</h2>
+                <div class="loading-spinner" id="loading-spinner">
+                    <div class="spinner"></div>
+                    <p>날씨 정보를 불러오는 중...</p>
                 </div>
                 
-                <div class="current-weather">
-                    <div class="temperature">
-                        <span id="temp">--</span>
-                        <span class="unit">°C</span>
+                <div class="weather-content" id="weather-content" style="display: none;">
+                    <div class="location">
+                        <h2 id="location">신시도</h2>
                     </div>
-                    <div class="weather-icon">
-                        <img id="weather-icon" src="" alt="날씨 아이콘">
+                    
+                    <div class="current-weather">
+                        <div class="temperature">
+                            <span id="temp">--</span>
+                            <span class="unit">°C</span>
+                        </div>
+                        <div class="weather-icon">
+                            <img id="weather-icon" src="" alt="날씨 아이콘">
+                        </div>
+                        <div class="description">
+                            <p id="description">--</p>
+                        </div>
                     </div>
-                    <div class="description">
-                        <p id="description">--</p>
-                    </div>
-                </div>
                 
                 <div class="weather-details">
                     <div class="detail-item">
@@ -86,8 +92,9 @@
                     </div>
                 </div>
                 
-                <div class="update-time">
-                    <p id="update-time">마지막 업데이트: --</p>
+                    <div class="update-time">
+                        <p id="update-time">마지막 업데이트: --</p>
+                    </div>
                 </div>
             </div>
         </main>

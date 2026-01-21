@@ -90,100 +90,76 @@ function getForecastDateTime() {
 
 // 날씨 데이터 가져오기
 async function fetchWeather() {
+    const loadingSpinner = document.getElementById('loading-spinner');
+    const weatherContent = document.getElementById('weather-content');
+    
     try {
+        // 로딩 스피너 표시
+        if (loadingSpinner) loadingSpinner.style.display = 'flex';
+        if (weatherContent) weatherContent.style.display = 'none';
+        
         const grid = convertGridCode(LAT, LON);
         const { base_date: ultra_date, base_time: ultra_time } = getUltraSrtDateTime();
         const { base_date: forecast_date, base_time: forecast_time } = getForecastDateTime();
         
-        console.log('격자 좌표 nx:', grid.nx, 'ny:', grid.ny);
-        console.log('초단기실황 요청 시간:', ultra_date, ultra_time);
-        console.log('단기예보 요청 시간:', forecast_date, forecast_time);
+        // API 호출을 병렬로 처리하여 속도 향상
+        const ultraUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst?serviceKey=${API_KEY}&pageNo=1&numOfRows=10&dataType=JSON&base_date=${ultra_date}&base_time=${ultra_time}&nx=${grid.nx}&ny=${grid.ny}`;
+        const forecastUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst?serviceKey=${API_KEY}&pageNo=1&numOfRows=100&dataType=JSON&base_date=${forecast_date}&base_time=${forecast_time}&nx=${grid.nx}&ny=${grid.ny}`;
         
-        const API_URL = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst?serviceKey=${API_KEY}&pageNo=1&numOfRows=10&dataType=JSON&base_date=${ultra_date}&base_time=${ultra_time}&nx=${grid.nx}&ny=${grid.ny}`;
+        // 두 API를 병렬로 호출
+        const [ultraResponse, forecastResponse] = await Promise.all([
+            fetch(ultraUrl),
+            fetch(forecastUrl)
+        ]);
         
-        const response = await fetch(API_URL);
-        
-        if (!response.ok) {
+        if (!ultraResponse.ok) {
             throw new Error('날씨 데이터를 가져오는데 실패했습니다.');
         }
         
-        const data = await response.json();
+        const ultraData = await ultraResponse.json();
         
-        console.log('API 응답 헤더:', data.response?.header);
-        
-        if (data.response?.header?.resultCode !== '00') {
-            const errorMsg = data.response?.header?.resultMsg || 'API 오류';
-            console.error('API 오류:', errorMsg);
+        if (ultraData.response?.header?.resultCode !== '00') {
+            const errorMsg = ultraData.response?.header?.resultMsg || 'API 오류';
             throw new Error(errorMsg);
         }
         
         // 초단기실황 데이터 파싱
-        const items = data.response?.body?.items?.item || [];
-        console.log('초단기실황 아이템 개수:', items.length);
-        
+        const items = ultraData.response?.body?.items?.item || [];
         const weatherData = {};
-        let hasValidData = false;
         
         items.forEach(item => {
-            const valueStr = String(item.obsrValue);
-            console.log(`카테고리: ${item.category}, 원본 값: "${valueStr}" (타입: ${typeof item.obsrValue})`);
-            
-            // 결측값 체크: 999, -999, 998, -998 등은 데이터 없음을 의미
             const numValue = parseFloat(item.obsrValue);
-            if (isNaN(numValue)) {
-                console.warn(`${item.category} 값이 숫자가 아닙니다: ${item.obsrValue}`);
+            
+            // 결측값 필터링
+            if (isNaN(numValue) || Math.abs(numValue) >= 998) {
                 return;
             }
-            
-            // 결측값 필터링 (999, -999, 998, -998 등)
-            if (Math.abs(numValue) >= 998) {
-                console.warn(`${item.category} 값이 결측값입니다: ${item.obsrValue}`);
-                return;
-            }
-            
-            hasValidData = true;
             
             switch(item.category) {
                 case 'T1H': // 기온
                     weatherData.temp = numValue;
-                    console.log('✓ 기온 설정:', numValue);
                     break;
                 case 'REH': // 습도
                     weatherData.humidity = numValue;
-                    console.log('✓ 습도 설정:', numValue);
                     break;
                 case 'WSD': // 풍속
                     weatherData.windSpeed = numValue;
-                    console.log('✓ 풍속 설정:', numValue);
                     break;
-                case 'PTY': // 강수형태 (0=없음, 1=비, 2=비/눈, 3=눈, 4=소나기)
+                case 'PTY': // 강수형태
                     weatherData.pty = item.obsrValue;
-                    console.log('✓ 강수형태 설정:', item.obsrValue);
                     break;
-                case 'SKY': // 하늘상태 (1=맑음, 3=구름많음, 4=흐림)
+                case 'SKY': // 하늘상태
                     weatherData.sky = item.obsrValue;
-                    console.log('✓ 하늘상태 설정:', item.obsrValue);
                     break;
             }
         });
         
-        if (!hasValidData) {
-            console.warn('초단기실황에서 유효한 데이터를 찾을 수 없습니다. 단기예보로 시도합니다.');
-        }
-        
-        console.log('초단기실황 파싱 결과:', JSON.stringify(weatherData, null, 2));
-        
-        // 단기예보로 추가 정보 가져오기 (하늘상태, 강수형태 등)
-        const forecastUrl = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getVilageFcst?serviceKey=${API_KEY}&pageNo=1&numOfRows=100&dataType=JSON&base_date=${forecast_date}&base_time=${forecast_time}&nx=${grid.nx}&ny=${grid.ny}`;
-        
-        const forecastResponse = await fetch(forecastUrl);
+        // 단기예보 데이터 파싱 (병렬로 이미 받아온 데이터 사용)
         if (forecastResponse.ok) {
             const forecastData = await forecastResponse.json();
             
             if (forecastData.response?.header?.resultCode === '00') {
                 const forecastItems = forecastData.response?.body?.items?.item || [];
-                
-                // 현재 시간에 가장 가까운 예보 데이터 찾기
                 const now = new Date();
                 const currentHour = String(now.getHours()).padStart(2, '0') + '00';
                 const nextHour = String((now.getHours() + 1) % 24).padStart(2, '0') + '00';
@@ -192,41 +168,47 @@ async function fetchWeather() {
                     if (item.fcstTime === currentHour || item.fcstTime === nextHour) {
                         const numValue = parseFloat(item.fcstValue);
                         
-                        // 결측값 필터링
                         if (isNaN(numValue) || Math.abs(numValue) >= 998) {
                             return;
                         }
                         
                         if (item.category === 'SKY' && !weatherData.sky) {
                             weatherData.sky = item.fcstValue;
-                            console.log('✓ 단기예보에서 하늘상태 설정:', item.fcstValue);
                         }
                         if (item.category === 'PTY' && !weatherData.pty) {
                             weatherData.pty = item.fcstValue;
-                            console.log('✓ 단기예보에서 강수형태 설정:', item.fcstValue);
                         }
                         if (item.category === 'REH' && (!weatherData.humidity || weatherData.humidity < 0)) {
                             weatherData.humidity = numValue;
-                            console.log('✓ 단기예보에서 습도 설정:', numValue);
                         }
                         if (item.category === 'WSD' && (!weatherData.windSpeed || weatherData.windSpeed < 0)) {
                             weatherData.windSpeed = numValue;
-                            console.log('✓ 단기예보에서 풍속 설정:', numValue);
                         }
                         if (item.category === 'TMP' && (!weatherData.temp || weatherData.temp < -100)) {
                             weatherData.temp = numValue;
-                            console.log('✓ 단기예보에서 기온 설정:', numValue);
                         }
                     }
                 });
             }
         }
         
+        // UI 업데이트
         updateWeatherUI(weatherData);
+        
+        // 로딩 스피너 숨기고 콘텐츠 표시
+        if (loadingSpinner) loadingSpinner.style.display = 'none';
+        if (weatherContent) weatherContent.style.display = 'block';
+        
     } catch (error) {
         console.error('Error:', error);
-        document.getElementById('temp').textContent = '오류';
-        document.getElementById('description').textContent = error.message || '날씨 정보를 불러올 수 없습니다.';
+        
+        // 에러 시에도 로딩 스피너 숨기기
+        if (loadingSpinner) loadingSpinner.style.display = 'none';
+        if (weatherContent) {
+            weatherContent.style.display = 'block';
+            document.getElementById('temp').textContent = '오류';
+            document.getElementById('description').textContent = error.message || '날씨 정보를 불러올 수 없습니다.';
+        }
     }
 }
 
